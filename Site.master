@@ -1,0 +1,243 @@
+﻿<%@ Master Language="C#" AutoEventWireup="true" CodeFile="Site.master.cs" Inherits="SiteMaster" %>
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head runat="server">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SmartScale Sync</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css"
+          crossorigin="anonymous" />
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Heebo', sans-serif !important;
+            background: #f1f5f9;
+            color: #1e293b;
+            margin: 0;
+        }
+
+        /* ── Top nav ─────────────────────────────── */
+        .ss-nav {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            position: sticky; top: 0; z-index: 100;
+            height: 60px;
+            display: flex; align-items: center;
+            padding: 0 1.5rem;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06);
+        }
+        .ss-nav-inner {
+            width: 100%; max-width: 1400px; margin: 0 auto;
+            display: flex; align-items: center; gap: 2rem;
+        }
+        .ss-brand {
+            display: flex; align-items: center; gap: .6rem;
+            text-decoration: none !important;
+            color: #1e293b !important;
+            font-weight: 700; font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .ss-brand:hover { color: #1e293b !important; }
+        .ss-logo {
+            width: 32px; height: 32px; border-radius: 8px;
+            background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+            color: #fff; font-size: .68rem; font-weight: 800;
+            display: flex; align-items: center; justify-content: center;
+            letter-spacing: -.5px; flex-shrink: 0;
+        }
+        .ss-nav-links {
+            display: flex; gap: .2rem;
+            margin-right: auto;
+        }
+        .ss-nav-links a {
+            padding: .35rem .9rem;
+            text-decoration: none !important;
+            color: #475569;
+            font-size: .875rem; font-weight: 500;
+            border-radius: 6px;
+            transition: color .15s, background .15s;
+        }
+        .ss-nav-links a:hover { color: #1d4ed8; background: #eff6ff; }
+        .ss-nav-links a.active { color: #1d4ed8; background: #eff6ff; font-weight: 600; }
+
+        /* ── Hero ────────────────────────────────── */
+        .ss-hero {
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 52%, #93c5fd 100%);
+            padding: 1.75rem 1.5rem;
+            color: #fff;
+        }
+        .ss-hero-inner {
+            max-width: 1400px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        }
+        .ss-hero h1 {
+            font-size: 1.35rem; font-weight: 700; margin: 0 0 .2rem;
+            color: #fff;
+        }
+        .ss-hero p { font-size: .8rem; opacity: .8; margin: 0; }
+        .ss-hero-actions { display: flex; gap: .75rem; align-items: center; flex-shrink: 0; }
+
+        /* ── Content wrap ────────────────────────── */
+        .ss-content {
+            max-width: 1400px; margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        /* ── Cards ───────────────────────────────── */
+        .card {
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 12px !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05) !important;
+            overflow: hidden;
+        }
+        .card-header {
+            background: #f8fafc !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+            font-size: .9rem; font-weight: 600;
+            padding: .85rem 1.25rem !important;
+        }
+        .card-body { padding: 1.25rem !important; }
+        .card-body.p-0 { padding: 0 !important; }
+
+        /* ── Table ───────────────────────────────── */
+        .table { font-size: .875rem; margin-bottom: 0; }
+        .table thead.table-dark th {
+            background: #1e293b !important;
+            color: #94a3b8 !important;
+            font-size: .7rem !important;
+            font-weight: 700 !important;
+            letter-spacing: .06em !important;
+            text-transform: uppercase !important;
+            border: none !important;
+            padding: .75rem 1rem !important;
+        }
+        .table tbody td {
+            padding: .65rem 1rem !important;
+            vertical-align: middle !important;
+            border-color: #f1f5f9 !important;
+        }
+        .table-hover tbody tr:hover { background-color: #f0f7ff !important; }
+        code {
+            font-size: .78rem;
+            background: #f1f5f9;
+            color: #0f172a;
+            padding: .15em .5em;
+            border-radius: 4px;
+        }
+
+        /* ── Badges ──────────────────────────────── */
+        .badge {
+            border-radius: 999px !important;
+            font-size: .7rem !important;
+            font-weight: 600 !important;
+            padding: .3em .75em !important;
+        }
+        .badge.bg-success  { background: #dcfce7 !important; color: #16a34a !important; }
+        .badge.bg-secondary{ background: #f1f5f9 !important; color: #64748b !important; }
+        .badge.bg-warning, .badge.bg-warning.text-dark { background: #fef9c3 !important; color: #92400e !important; }
+        .badge.bg-danger   { background: #fee2e2 !important; color: #dc2626 !important; }
+        .badge.bg-info     { background: #e0f2fe !important; color: #0369a1 !important; }
+
+        /* ── Buttons ─────────────────────────────── */
+        .btn {
+            border-radius: 999px !important;
+            font-size: .8rem !important;
+            font-weight: 600 !important;
+            transition: all .15s !important;
+        }
+        .btn-sm { padding: .25rem .7rem !important; font-size: .75rem !important; }
+        .btn-success { background: #16a34a !important; border-color: #16a34a !important; }
+        .btn-success:hover { background: #15803d !important; border-color: #15803d !important; }
+        .btn-primary { background: #2563eb !important; border-color: #2563eb !important; }
+        .btn-primary:hover { background: #1d4ed8 !important; border-color: #1d4ed8 !important; }
+        .btn-danger { background: #dc2626 !important; border-color: #dc2626 !important; }
+        .btn-danger:hover { background: #b91c1c !important; border-color: #b91c1c !important; }
+        .btn-warning { background: #d97706 !important; border-color: #d97706 !important; color: #fff !important; }
+        .btn-outline-primary { color: #2563eb !important; border-color: #bfdbfe !important; background: #eff6ff !important; }
+        .btn-outline-primary:hover { background: #2563eb !important; color: #fff !important; border-color: #2563eb !important; }
+        .btn-outline-info { color: #0369a1 !important; border-color: #bae6fd !important; background: #f0f9ff !important; }
+        .btn-outline-info:hover { background: #0369a1 !important; color: #fff !important; border-color: #0369a1 !important; }
+        .btn-outline-secondary { color: #64748b !important; border-color: #cbd5e1 !important; }
+        .btn-outline-secondary:hover { background: #64748b !important; color: #fff !important; border-color: #64748b !important; }
+
+        /* ── Alerts ──────────────────────────────── */
+        .alert { border-radius: 10px !important; border: none !important; font-size: .875rem; }
+        .alert-success { background: #dcfce7 !important; color: #15803d !important; }
+        .alert-danger  { background: #fee2e2 !important; color: #b91c1c  !important; }
+
+        /* ── Forms ───────────────────────────────── */
+        .form-label { font-size: .85rem; font-weight: 600; color: #374151; margin-bottom: .3rem; }
+        .form-control, .form-select {
+            border-radius: 8px !important;
+            border-color: #d1d5db !important;
+            font-size: .875rem !important;
+            font-family: 'Heebo', sans-serif !important;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #2563eb !important;
+            box-shadow: 0 0 0 3px rgba(37,99,235,.12) !important;
+        }
+        .form-text { font-size: .78rem !important; }
+        .form-check-input:checked { background-color: #2563eb !important; border-color: #2563eb !important; }
+
+        /* ── Section bar ─────────────────────────── */
+        .ss-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;
+        }
+        .ss-bar-title { font-weight: 700; font-size: .95rem; margin: 0; color: #1e293b; }
+        .ss-bar-meta  { font-size: .8rem; color: #64748b; }
+
+        /* ── Empty state ─────────────────────────── */
+        .empty-state { text-align: center; padding: 3rem 1rem; color: #94a3b8; }
+        .empty-state a { color: #2563eb; }
+    </style>
+    <asp:ContentPlaceHolder ID="HeadContent" runat="server" />
+</head>
+<body>
+
+    <nav class="ss-nav">
+        <div class="ss-nav-inner">
+            <a class="ss-brand" href="Clients.aspx">
+                <div class="ss-logo">SS</div>
+                <span>SmartScale Sync</span>
+            </a>
+            <div class="ss-nav-links">
+                <a href="Clients.aspx" class="<%=IsActive("Clients")%>">&#128101;&nbsp;לקוחות</a>
+                <a href="Logs.aspx"    class="<%=IsActive("Logs")%>">&#128196;&nbsp;לוגים</a>
+            </div>
+        </div>
+    </nav>
+
+    <asp:ContentPlaceHolder ID="HeroContent" runat="server" />
+
+    <div class="ss-content">
+        <% if (Session["Success"] != null) { %>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <%: Session["Success"] %>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <% Session.Remove("Success"); %>
+        <% } %>
+        <% if (Session["Error"] != null) { %>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <%: Session["Error"] %>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <% Session.Remove("Error"); %>
+        <% } %>
+
+        <form id="Form1" runat="server">
+            <asp:ContentPlaceHolder ID="MainContent" runat="server" />
+        </form>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+            crossorigin="anonymous"></script>
+</body>
+</html>

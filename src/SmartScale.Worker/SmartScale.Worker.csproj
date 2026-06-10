@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x86</PlatformTarget>
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <RootNamespace>SmartScale.Worker</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Dapper"                                     Version="2.1.35" />
+    <PackageReference Include="Microsoft.Data.SqlClient"                   Version="5.2.2" />
+    <PackageReference Include="System.Data.OleDb"                          Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration"         Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json"    Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging"               Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console"       Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

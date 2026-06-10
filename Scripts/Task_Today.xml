@@ -1,0 +1,89 @@
+﻿<?xml version="1.0" encoding="UTF-16"?>
+
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+
+  <RegistrationInfo>
+
+    <Date>2026-06-10T11:01:40.5284414</Date>
+
+    <Author>DESKTOP-NT9JMGD\koriat</Author>
+
+    <Description>SmartScale Worker — סנכרון היום (כל 5 דקות)</Description>
+
+    <URI>\SmartScaleWorkerTask_Today</URI>
+
+  </RegistrationInfo>
+
+  <Principals>
+
+    <Principal id="Author">
+
+      <UserId>S-1-5-21-3543236145-1136098358-3405112608-1001</UserId>
+
+      <LogonType>Password</LogonType>
+
+      <RunLevel>HighestAvailable</RunLevel>
+
+    </Principal>
+
+  </Principals>
+
+  <Settings>
+
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+
+    <ExecutionTimeLimit>PT10M</ExecutionTimeLimit>
+
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+
+    <StartWhenAvailable>true</StartWhenAvailable>
+
+    <IdleSettings>
+
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+
+      <RestartOnIdle>false</RestartOnIdle>
+
+    </IdleSettings>
+
+  </Settings>
+
+  <Triggers>
+
+    <CalendarTrigger>
+
+      <StartBoundary>2026-06-10T01:00:00</StartBoundary>
+
+      <Repetition>
+
+        <Interval>PT5M</Interval>
+
+        <Duration>P1D</Duration>
+
+      </Repetition>
+
+      <ScheduleByDay>
+
+        <DaysInterval>1</DaysInterval>
+
+      </ScheduleByDay>
+
+    </CalendarTrigger>
+
+  </Triggers>
+
+  <Actions Context="Author">
+
+    <Exec>
+
+      <Command>C:\inetpub\wwwroot\migrateDB\Worker\RunWorker_Today.bat</Command>
+
+      <WorkingDirectory>C:\inetpub\wwwroot\migrateDB\Worker</WorkingDirectory>
+
+    </Exec>
+
+  </Actions>
+
+</Task>

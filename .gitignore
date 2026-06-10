@@ -1,0 +1,41 @@
+# Production credentials — never commit
+src/SmartScale.Worker/appsettings.json
+
+# Build output
+src/SmartScale.Worker/bin/
+src/SmartScale.Worker/obj/
+
+# Deployed Worker binaries (keep only scripts and source)
+Worker/*.dll
+Worker/*.exe
+Worker/*.pdb
+Worker/*.json
+Worker/build_new/
+Worker/WorkerBuild*/
+Worker/de/
+Worker/es/
+Worker/fr/
+Worker/it/
+Worker/ja/
+Worker/ko/
+Worker/pt-BR/
+Worker/ru/
+Worker/zh-Hans/
+Worker/zh-Hant/
+Worker/createdump.exe
+
+# Access database files
+*.accdb
+*.laccdb
+
+# Reminder logs
+Scripts/ReminderLog_*.txt
+
+# ASP.NET temp
+*.suo
+*.user
+Temporary ASP.NET Files/
+
+# Windows
+Thumbs.db
+Desktop.ini
