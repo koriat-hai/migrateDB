@@ -111,12 +111,15 @@ public class SyncOrchestrator
 
         // שלב 2ב: בדיקת mtime — אם הקובץ לא השתנה מאז הסנכרון האחרון, אין מה לסנכרן
         // בשבת — דולגים על הבדיקה כדי לאפשר סריקה מלאה של כל הנתונים (כולל שינויים היסטוריים)
-        bool isSaturday  = DateTime.Now.DayOfWeek == DayOfWeek.Saturday;
-        var mtimeKey     = _tableFilter != null ? $"file_mtime_{_tableFilter}" : "file_mtime";
-        var currentMtime = lwt2.Ticks.ToString();
-        var storedMtime  = await _repo.GetMetaValueAsync(client.ClientId, mtimeKey);
-        bool isFirstSync = storedMtime == null;   // לקוח חדש — אין היסטוריית סנכרון
-        if (!isSaturday && !isFirstSync && storedMtime == currentMtime && !client.RunRequestedAt.HasValue)
+        bool isSaturday    = DateTime.Now.DayOfWeek == DayOfWeek.Saturday;
+        bool isRunRequested = client.RunRequestedAt.HasValue;
+        // כשיש RunRequested — מתעלמים מ-tableFilter ומריצים סנכרון מלא של כל הטבלאות
+        var effectiveFilter = isRunRequested ? null : _tableFilter;
+        var mtimeKey        = effectiveFilter != null ? $"file_mtime_{effectiveFilter}" : "file_mtime";
+        var currentMtime    = lwt2.Ticks.ToString();
+        var storedMtime     = await _repo.GetMetaValueAsync(client.ClientId, mtimeKey);
+        bool isFirstSync    = storedMtime == null;   // לקוח חדש — אין היסטוריית סנכרון
+        if (!isSaturday && !isFirstSync && storedMtime == currentMtime && !isRunRequested)
         {
             _logger.LogInformation("קובץ לא השתנה מאז הסנכרון האחרון — מדלג ({Mtime})", lwt2);
             return;
@@ -125,11 +128,14 @@ public class SyncOrchestrator
             _logger.LogInformation("סנכרון ראשון ללקוח {Name} — סריקה מלאה של כל ההיסטוריה", client.ClientName);
         else if (isSaturday && storedMtime == currentMtime)
             _logger.LogInformation("שבת — מתעלם מבדיקת mtime לסריקה היסטורית מלאה");
-        else if (client.RunRequestedAt.HasValue && storedMtime == currentMtime)
-            _logger.LogInformation("סנכרון מאולץ — מתעלם מבדיקת mtime");
+        else if (isRunRequested && storedMtime == currentMtime)
+            _logger.LogInformation("סנכרון מאולץ — מתעלם מבדיקת mtime ו-tableFilter");
+        if (isRunRequested && _tableFilter != null)
+            _logger.LogInformation("RunRequested — מתעלם מ-tableFilter ({Filter}), מריץ כל הטבלאות", _tableFilter);
 
         // שלב 3א: העתק את קובץ Access לתיקיה מקומית — קריאה מקומית מהירה מאשר דרך הרשת
-        var localAccPath = Path.Combine(Path.GetTempPath(), $"SmartScale_{client.ClientId}.accdb");
+        // GUID בשם הקובץ מונע התנגשות בין ריצות מקבילות של אותו לקוח
+        var localAccPath = Path.Combine(Path.GetTempPath(), $"SmartScale_{client.ClientId}_{Guid.NewGuid():N}.accdb");
         var swCopy = Stopwatch.StartNew();
         try
         {
@@ -163,7 +169,7 @@ public class SyncOrchestrator
         List<TableSchema> schemas;
         try
         {
-            schemas = extractor.ExtractSchemas(accessConnStr, _tableFilter);
+            schemas = extractor.ExtractSchemas(accessConnStr, effectiveFilter);
         }
         catch (Exception ex)
         {
@@ -177,13 +183,13 @@ public class SyncOrchestrator
         var tableManager = new TargetTableManager(targetConnStr, _loggerFactory.CreateLogger<TargetTableManager>());
         var dataSyncer   = new DataSyncer(_repo, accessConnStr, targetConnStr, _loggerFactory.CreateLogger<DataSyncer>());
 
-        bool fullScan = isSaturday || isFirstSync;
+        bool fullScan = isSaturday || isFirstSync || isRunRequested;
         if (isSaturday)
             _logger.LogInformation("שבת — סריקה מלאה (ללא חלון תאריך, כולל נתונים היסטוריים)");
 
         foreach (var schema in schemas)
         {
-            if (_tableFilter != null && !schema.TableName.Equals(_tableFilter, StringComparison.OrdinalIgnoreCase))
+            if (effectiveFilter != null && !schema.TableName.Equals(effectiveFilter, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var startTime = DateTime.UtcNow;

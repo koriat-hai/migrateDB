@@ -18,10 +18,19 @@ using var loggerFactory = LoggerFactory.Create(builder =>
 var logger = loggerFactory.CreateLogger("Main");
 
 // מניעת ריצות מקבילות — רק instance אחד בכל רגע
-using var mutex = new Mutex(true, "Local\\SmartScaleWorker", out var acquiredMutex);
+// --manual: ריצה ידנית מהאתר — ממתין עד 30 דק' לmutex (Task_Today ייסיים תוך דקות)
+// ללא --manual: ריצה מתוזמנת — ממתין 30 שניות בלבד
+bool isManualRun = Array.IndexOf(args, "--manual") >= 0;
+var mutexTimeout = isManualRun ? TimeSpan.FromMinutes(30) : TimeSpan.FromSeconds(30);
+
+using var mutex = new Mutex(false, "SmartScaleWorker");
+bool acquiredMutex = mutex.WaitOne(mutexTimeout);
 if (!acquiredMutex)
 {
-    logger.LogWarning("Worker כבר רץ — מדלג על ריצה זו ({Time})", DateTime.Now);
+    if (isManualRun)
+        logger.LogWarning("Worker לא הצליח לרכוש mutex אחרי 30 דק' — יוצא ({Time})", DateTime.Now);
+    else
+        logger.LogInformation("Worker כבר רץ — מדלג על ריצה מתוזמנת ({Time})", DateTime.Now);
     return;
 }
 

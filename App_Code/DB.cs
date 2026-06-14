@@ -71,18 +71,19 @@ public static class DB
         }
     }
 
-    public static void AddClient(string name, string path, string db, bool active)
+    public static int AddClient(string name, string path, string db, bool active)
     {
         using (var conn = Open())
         using (var cmd = new SqlCommand(@"
             INSERT INTO Clients (ClientName, AccessFolderPath, TargetDatabase, IsActive, CreatedAt, UpdatedAt)
+            OUTPUT INSERTED.ClientId
             VALUES (@n, @p, @d, @a, GETUTCDATE(), GETUTCDATE())", conn))
         {
             cmd.Parameters.AddWithValue("@n", name);
             cmd.Parameters.AddWithValue("@p", path);
             cmd.Parameters.AddWithValue("@d", db);
             cmd.Parameters.AddWithValue("@a", active);
-            cmd.ExecuteNonQuery();
+            return (int)cmd.ExecuteScalar();
         }
     }
 
