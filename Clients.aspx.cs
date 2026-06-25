@@ -96,16 +96,30 @@ public partial class Clients : Page
         return "—";
     }
 
-    private static void TriggerTask(string taskName)
+    private static readonly string WorkerExePath =
+        WebConfigurationManager.AppSettings["WorkerExePath"]
+        ?? @"C:\inetpub\wwwroot\migrateDB\Worker\SmartScale.Worker.exe";
+
+    private static readonly string NetworkDriveLetter =
+        WebConfigurationManager.AppSettings["NetworkDriveLetter"] ?? "H:";
+
+    private static readonly string NetworkDrivePath =
+        WebConfigurationManager.AppSettings["NetworkDrivePath"] ?? @"\\serverdb\servercust";
+
+    private static void RunWorker(string args = "")
     {
         try
         {
-            var proc = Process.Start(new ProcessStartInfo("schtasks", "/run /tn \"" + taskName + "\"")
+            var workerDir = Path.GetDirectoryName(WorkerExePath);
+            var cmd = string.Format(
+                "net use {0} \"{1}\" 2>nul & cd /d \"{2}\" & \"{3}\" {4}",
+                NetworkDriveLetter, NetworkDrivePath, workerDir, WorkerExePath, args);
+
+            Process.Start(new ProcessStartInfo("cmd.exe", "/c " + cmd)
             {
                 UseShellExecute = false,
                 CreateNoWindow  = true
             });
-            if (proc != null) proc.WaitForExit(1000);
         }
         catch { }
     }
@@ -124,8 +138,9 @@ public partial class Clients : Page
 
         if (clientId == 0)
         {
-            DB.AddClient(name, path, db, active);
-            Session["Success"] = "הלקוח נוסף בהצלחה.";
+            int newId = DB.AddClient(name, path, db, active);
+            DB.SetRunRequested(newId);
+            Session["Success"] = "הלקוח נוסף בהצלחה. סנכרון מלא יחל תוך 5 דקות.";
         }
         else
         {
@@ -155,20 +170,18 @@ public partial class Clients : Page
             case "RunFull":
                 DB.ClearClientMtime(id);
                 DB.SetRunRequested(id);
-                TriggerTask("Task_90Days");
-                TriggerTask("Task_Today");
-                Session["Success"] = "סנכרון מלא הופעל — יסרוק כל ההיסטוריה מהיום הראשון.";
+                Session["Success"] = "סנכרון מלא הופעל — יחל תוך 5 דקות.";
                 break;
 
             case "RunToday":
                 DB.SetRunRequested(id);
-                TriggerTask("Task_Today");
+                RunWorker("--window-days 0 --table reports");
                 Session["Success"] = "סנכרון היום הופעל.";
                 break;
 
             case "Run90Days":
                 DB.SetRunRequested(id);
-                TriggerTask("Task_90Days");
+                RunWorker();
                 Session["Success"] = "סנכרון 90 יום הופעל.";
                 break;
         }

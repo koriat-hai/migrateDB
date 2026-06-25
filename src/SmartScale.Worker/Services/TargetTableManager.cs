@@ -48,9 +48,17 @@ public class TargetTableManager
 
         var ddl = $"CREATE TABLE [{schema.TableName}] (\n{string.Join(",\n", colDefs)}\n);";
 
-        _logger.LogInformation("יוצר טבלה [{Table}] ביעד", schema.TableName);
+        _logger.LogInformation("יוצר טבלה [{Table}] ביעד\n{Ddl}", schema.TableName, ddl);
         using var createCmd = conn.CreateCommand();
         createCmd.CommandText = ddl;
-        createCmd.ExecuteNonQuery();
+        try
+        {
+            createCmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "שגיאה ביצירת טבלה [{Table}]", schema.TableName);
+            throw;
+        }
     }
 }

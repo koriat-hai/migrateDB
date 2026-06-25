@@ -1,3 +1,4 @@
+using System.Data;
 using Dapper;
 using Microsoft.Data.SqlClient;
 
@@ -89,6 +90,38 @@ public class MigrateDbRepository
                 result[r.RowKey] = r.RowHash;
         }
         return result;
+    }
+
+    public async Task BulkUpsertSyncStateAsync(int clientId, string tableName, List<(string rowKey, string rowHash)> items)
+    {
+        if (items.Count == 0) return;
+
+        using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        await conn.ExecuteAsync("CREATE TABLE #tmp (RowKey NVARCHAR(900) NOT NULL, RowHash CHAR(32) NOT NULL)");
+
+        var dt = new DataTable();
+        dt.Columns.Add("RowKey",  typeof(string));
+        dt.Columns.Add("RowHash", typeof(string));
+        foreach (var (k, h) in items)
+            dt.Rows.Add(k, h);
+
+        using (var bulk = new SqlBulkCopy(conn) { DestinationTableName = "#tmp", BulkCopyTimeout = 0 })
+            bulk.WriteToServer(dt);
+
+        await conn.ExecuteAsync(@"
+            MERGE SyncState AS target
+            USING (SELECT @ClientId AS ClientId, @TableName AS TableName, RowKey, RowHash FROM #tmp) AS src
+                ON  target.ClientId  = src.ClientId
+                AND target.TableName = src.TableName
+                AND target.RowKey    = src.RowKey
+            WHEN MATCHED THEN
+                UPDATE SET RowHash = src.RowHash, UpdatedAt = GETUTCDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (ClientId, TableName, RowKey, RowHash, UpdatedAt)
+                VALUES (@ClientId, @TableName, src.RowKey, src.RowHash, GETUTCDATE());",
+            new { ClientId = clientId, TableName = tableName });
     }
 
     public async Task UpsertSyncStateAsync(int clientId, string tableName, string rowKey, string rowHash)
