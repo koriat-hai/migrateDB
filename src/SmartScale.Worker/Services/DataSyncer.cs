@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.OleDb;
 using System.Diagnostics;
 using System.Globalization;
@@ -32,17 +33,15 @@ public class DataSyncer
             return await FullReplaceTableAsync(schema);
 
         var colNames  = schema.Columns.Select(c => c.Name).ToList();
-        var insertSql = BuildInsertSql(schema.TableName, colNames);
         var updateSql = BuildUpdateSql(schema.TableName, colNames, schema.PrimaryKeyColumns);
 
         int inserted = 0, updated = 0;
 
-        // בנה SELECT — date-window לסנכרון מלא של החלון (כולל עדכונים לשורות קיימות)
         var selectSql = windowDateColumn != null && windowStart.HasValue
             ? $"SELECT * FROM [{schema.TableName}] WHERE [{windowDateColumn}] >= #{windowStart.Value:yyyy-MM-dd}#"
             : $"SELECT * FROM [{schema.TableName}]";
 
-        // קרא מ-Access לזיכרון וסגור חיבור מיד — לא להחזיק נעילה בזמן עבודת SQL Server
+        // קרא מ-Access לזיכרון
         var rows = new List<(string rowKey, string rowHash, object?[] values)>();
         var swAccess = Stopwatch.StartNew();
         using (var accessConn = new OleDbConnection(_accessConnStr))
@@ -68,31 +67,27 @@ public class DataSyncer
             }
             swRead.Stop();
             _logger.LogInformation("  ⏱ Access Read: {E:N1}s | {Count} שורות", swRead.Elapsed.TotalSeconds, rows.Count);
-
-        } // חיבור Access נסגר כאן — לפני כל עבודת SQL Server
+        }
         swAccess.Stop();
-        _logger.LogInformation("  ⏱ Access סה״כ (Open+Read): {E:N1}s", swAccess.Elapsed.TotalSeconds);
+        _logger.LogInformation("  ⏱ Access סה״כ: {E:N1}s", swAccess.Elapsed.TotalSeconds);
 
-        // טען state רק לשורות שנמצאו (לא כל הטבלה); incremental PK → כולן חדשות → dict ריק מספיק
         var stateMap = windowDateColumn != null
             ? await _repo.GetSyncStateMapForKeysAsync(clientId, schema.TableName, rows.Select(r => r.rowKey))
             : await _repo.GetSyncStateMapAsync(clientId, schema.TableName);
 
-        const int batchSize = 500;
-        var pending = new List<(string rowKey, string rowHash, object?[] values, bool isInsert)>();
+        var toInsert = new List<(string rowKey, string rowHash, object?[] values)>();
+        var toUpdate = new List<(string rowKey, string rowHash, object?[] values)>();
 
         foreach (var (rowKey, rowHash, values) in rows)
         {
             if (!stateMap.TryGetValue(rowKey, out var existingHash))
             {
-                pending.Add((rowKey, rowHash, values, true));
-                stateMap[rowKey] = rowHash;
+                toInsert.Add((rowKey, rowHash, values));
                 inserted++;
             }
             else if (existingHash != rowHash)
             {
-                pending.Add((rowKey, rowHash, values, false));
-                stateMap[rowKey] = rowHash;
+                toUpdate.Add((rowKey, rowHash, values));
                 updated++;
             }
         }
@@ -100,18 +95,72 @@ public class DataSyncer
         using var targetConn = new SqlConnection(_targetConnStr);
         targetConn.Open();
 
-        // הכנס/עדכן ב-batches של 500 שורות
-        for (int i = 0; i < pending.Count; i += batchSize)
+        // SqlBulkCopy → staging → MERGE לטיפול במקרה ש-SyncState לא מסונכרן עם הטבלה האמיתית
+        if (toInsert.Count > 0)
         {
-            var batch = pending.Skip(i).Take(batchSize).ToList();
-            using (var tx = targetConn.BeginTransaction())
+            var swBulk    = Stopwatch.StartNew();
+            var dt        = BuildInsertDataTable(schema, colNames, toInsert);
+            var stageName = "#stage" + Guid.NewGuid().ToString("N")[..8];
+
+            // staging table בעלת אותה מבנה כמו הטבלה (כולל RowHash)
+            new SqlCommand($"SELECT TOP 0 * INTO [{stageName}] FROM [{schema.TableName}]", targetConn)
+                .ExecuteNonQuery();
+
+            using (var bulkCopy = new SqlBulkCopy(targetConn) { DestinationTableName = stageName, BatchSize = 5000, BulkCopyTimeout = 0 })
             {
-                foreach (var (rowKey, rowHash, values, isInsert) in batch)
-                    ExecuteCommandFromValues(targetConn, tx, isInsert ? insertSql : updateSql, colNames, values, rowHash);
+                foreach (DataColumn col in dt.Columns)
+                    bulkCopy.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+                bulkCopy.WriteToServer(dt);
+            }
+
+            var pkMatch    = string.Join(" AND ", schema.PrimaryKeyColumns.Select(pk => $"t.[{pk}] = s.[{pk}]"));
+            var allCols    = colNames.Append("RowHash").ToList();
+            var nonPkCols  = allCols.Where(c => !schema.PrimaryKeyColumns.Contains(c, StringComparer.OrdinalIgnoreCase));
+            var setClause  = string.Join(", ", nonPkCols.Select(c => $"t.[{c}] = s.[{c}]"));
+            var insCols    = string.Join(", ", allCols.Select(c => $"[{c}]"));
+            var insVals    = string.Join(", ", allCols.Select(c => $"s.[{c}]"));
+
+            var mergeSql = $"MERGE [{schema.TableName}] AS t USING [{stageName}] AS s ON {pkMatch} " +
+                           $"WHEN MATCHED THEN UPDATE SET {setClause} " +
+                           $"WHEN NOT MATCHED THEN INSERT ({insCols}) VALUES ({insVals});";
+
+            using var mergeCmd = new SqlCommand(mergeSql, targetConn) { CommandTimeout = 0 };
+            mergeCmd.ExecuteNonQuery();
+
+            new SqlCommand($"DROP TABLE [{stageName}]", targetConn).ExecuteNonQuery();
+
+            swBulk.Stop();
+            _logger.LogInformation("  ⏱ BulkInsert+Merge {Count} שורות: {E:N1}s", toInsert.Count, swBulk.Elapsed.TotalSeconds);
+        }
+
+        // UPDATEs — בד"כ מעטים, נשארים row-by-row בתוך batches
+        if (toUpdate.Count > 0)
+        {
+            const int batchSize = 500;
+            var swUpd = Stopwatch.StartNew();
+            for (int i = 0; i < toUpdate.Count; i += batchSize)
+            {
+                var batch = toUpdate.Skip(i).Take(batchSize).ToList();
+                using var tx = targetConn.BeginTransaction();
+                foreach (var (_, rowHash, values) in batch)
+                    ExecuteCommandFromValues(targetConn, tx, updateSql, colNames, values, rowHash);
                 tx.Commit();
             }
-            foreach (var (rowKey, rowHash, _, _) in batch)
-                await _repo.UpsertSyncStateAsync(clientId, schema.TableName, rowKey, rowHash);
+            swUpd.Stop();
+            _logger.LogInformation("  ⏱ Updates {Count} שורות: {E:N1}s", toUpdate.Count, swUpd.Elapsed.TotalSeconds);
+        }
+
+        // עדכון SyncState — bulk upsert אחד לכל הטבלה
+        var allChanged = toInsert.Select(r => (r.rowKey, r.rowHash))
+            .Concat(toUpdate.Select(r => (r.rowKey, r.rowHash)))
+            .ToList();
+
+        if (allChanged.Count > 0)
+        {
+            var swState = Stopwatch.StartNew();
+            await _repo.BulkUpsertSyncStateAsync(clientId, schema.TableName, allChanged);
+            swState.Stop();
+            _logger.LogInformation("  ⏱ SyncState bulk upsert {Count}: {E:N1}s", allChanged.Count, swState.Elapsed.TotalSeconds);
         }
 
         return (inserted, updated);
@@ -119,12 +168,12 @@ public class DataSyncer
 
     private async Task<(int inserted, int updated)> FullReplaceTableAsync(TableSchema schema)
     {
-        var colNames  = schema.Columns.Select(c => c.Name).ToList();
-        var paramList = string.Join(", ", Enumerable.Range(0, colNames.Count).Select(i => $"@p{i}"));
-        var colList   = string.Join(", ", colNames.Select(c => $"[{c}]"));
-        var insertSql = $"INSERT INTO [{schema.TableName}] ({colList}) VALUES ({paramList})";
+        var colNames = schema.Columns.Select(c => c.Name).ToList();
 
-        var rows = new List<object?[]>();
+        var dt = new DataTable();
+        foreach (var col in schema.Columns)
+            dt.Columns.Add(col.Name, typeof(object));
+
         using (var accessConn = new OleDbConnection(_accessConnStr))
         {
             accessConn.Open();
@@ -132,45 +181,64 @@ public class DataSyncer
             using var reader = selectCmd.ExecuteReader();
             while (reader.Read())
             {
-                var values = new object?[reader.FieldCount];
+                var row = dt.NewRow();
                 for (int i = 0; i < reader.FieldCount; i++)
-                    values[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                rows.Add(values);
+                {
+                    var val = reader.IsDBNull(i) ? (object?)null : reader.GetValue(i);
+                    if (val is byte[] b) val = Convert.ToHexString(b);
+                    row[colNames[i]] = val ?? DBNull.Value;
+                }
+                dt.Rows.Add(row);
             }
-        } // חיבור Access נסגר לפני SQL Server
+        }
 
         using var targetConn = new SqlConnection(_targetConnStr);
         targetConn.Open();
 
         using (var tx = targetConn.BeginTransaction())
         {
-            using var truncCmd = new SqlCommand($"TRUNCATE TABLE [{schema.TableName}]", targetConn, tx);
-            truncCmd.ExecuteNonQuery();
-
-            foreach (var values in rows)
-            {
-                using var cmd = new SqlCommand(insertSql, targetConn, tx);
-                for (int i = 0; i < colNames.Count; i++)
-                {
-                    var raw = values[i];
-                    if (raw is byte[] b) raw = Convert.ToHexString(b);
-                    cmd.Parameters.AddWithValue($"@p{i}", raw ?? DBNull.Value);
-                }
-                cmd.ExecuteNonQuery();
-            }
-
+            new SqlCommand($"TRUNCATE TABLE [{schema.TableName}]", targetConn, tx).ExecuteNonQuery();
             tx.Commit();
         }
 
-        _logger.LogInformation("  [{Table}] Full Replace: {Count} שורות", schema.TableName, rows.Count);
-        return await Task.FromResult((rows.Count, 0));
+        using (var bulkCopy = new SqlBulkCopy(targetConn)
+        {
+            DestinationTableName = schema.TableName,
+            BatchSize            = 5000,
+            BulkCopyTimeout      = 0
+        })
+        {
+            foreach (DataColumn col in dt.Columns)
+                bulkCopy.ColumnMappings.Add(col.ColumnName, col.ColumnName);
+            bulkCopy.WriteToServer(dt);
+        }
+
+        _logger.LogInformation("  [{Table}] Full Replace BulkCopy: {Count} שורות", schema.TableName, dt.Rows.Count);
+        return (dt.Rows.Count, 0);
     }
 
-    private static string BuildInsertSql(string tableName, List<string> cols)
+    private static DataTable BuildInsertDataTable(TableSchema schema, List<string> colNames,
+        List<(string rowKey, string rowHash, object?[] values)> rows)
     {
-        var colList   = string.Join(", ", cols.Select(c => $"[{c}]")) + ", [RowHash]";
-        var paramList = string.Join(", ", Enumerable.Range(0, cols.Count).Select(i => $"@p{i}")) + ", @pHash";
-        return $"INSERT INTO [{tableName}] ({colList}) VALUES ({paramList})";
+        var dt = new DataTable();
+        foreach (var col in schema.Columns)
+            dt.Columns.Add(col.Name, typeof(object));
+        dt.Columns.Add("RowHash", typeof(string));
+
+        foreach (var (_, rowHash, values) in rows)
+        {
+            var row = dt.NewRow();
+            for (int i = 0; i < colNames.Count; i++)
+            {
+                var val = values[i];
+                if (val is byte[] b) val = Convert.ToHexString(b);
+                row[colNames[i]] = val ?? DBNull.Value;
+            }
+            row["RowHash"] = rowHash;
+            dt.Rows.Add(row);
+        }
+
+        return dt;
     }
 
     private static string BuildUpdateSql(string tableName, List<string> cols, List<string> pkCols)

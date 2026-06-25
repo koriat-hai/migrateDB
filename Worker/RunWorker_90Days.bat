@@ -1,4 +1,4 @@
 @echo off
-net use H: \\serverdb\servercust 2>nul
-cd /d C:\inetpub\wwwroot\migrateDB\Worker
-SmartScale.Worker.exe
+net use H: "\\serverdb\servercust" 2>nul
+cd /d "C:\inetpub\wwwroot\migrateDB\Worker"
+"C:\inetpub\wwwroot\migrateDB\Worker\SmartScale.Worker.exe"
