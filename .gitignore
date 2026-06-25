@@ -24,6 +24,9 @@ Worker/zh-Hans/
 Worker/zh-Hant/
 Worker/createdump.exe
 
+# Worker_new — deployed binaries directory
+Worker_new/
+
 # Access database files
 *.accdb
 *.laccdb
