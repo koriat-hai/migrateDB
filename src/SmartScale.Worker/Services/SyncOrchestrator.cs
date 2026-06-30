@@ -74,17 +74,22 @@ public class SyncOrchestrator
 
     private async Task ProcessClientAsync(Client client)
     {
-        // שלב 1: איתור קובץ .accdb — עם retry כי כונן רשת (H:) עלול להיות לא זמין לרגע בתחילת הריצה
+        // שלב 1: איתור קובץ .accdb — עם retries כי כונן רשת (H:) עלול להיות לא זמין לרגע בתחילת הריצה
+        // כל הלקוחות רצים במקביל ובודקים H: בו-זמנית; 3 ניסיונות עם עיכוב מצטבר (5+10+15 שניות)
         bool folderExists = Directory.Exists(client.AccessFolderPath);
         if (!folderExists)
         {
-            _logger.LogWarning("תיקייה לא נמצאת: {Path} — ממתין 8 שניות ומנסה שוב", client.AccessFolderPath);
-            await Task.Delay(TimeSpan.FromSeconds(8));
-            folderExists = Directory.Exists(client.AccessFolderPath);
+            foreach (var delaySec in new[] { 5, 10, 15 })
+            {
+                _logger.LogWarning("תיקייה לא נמצאת: {Path} — ממתין {D}s ומנסה שוב", client.AccessFolderPath, delaySec);
+                await Task.Delay(TimeSpan.FromSeconds(delaySec));
+                folderExists = Directory.Exists(client.AccessFolderPath);
+                if (folderExists) break;
+            }
         }
         if (!folderExists)
         {
-            _logger.LogWarning("תיקייה לא קיימת לאחר retry: {Path}", client.AccessFolderPath);
+            _logger.LogWarning("תיקייה לא קיימת לאחר כל ה-retries: {Path}", client.AccessFolderPath);
             await WriteSkipLog(client, "*", $"תיקייה לא נמצאת: {client.AccessFolderPath}");
             return;
         }
